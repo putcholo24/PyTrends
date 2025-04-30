@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import os
 from playwright.sync_api import sync_playwright
 import pandas as pd
@@ -5,44 +7,43 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # STEP 1: Scrape all Google Trends – South Korea Trending Now
-def scrape_all_trends():
+def scrape_all_trends() -> pd.DataFrame:
     with sync_playwright() as p:
-        # run in headless mode (needed on GitHub Actions)
+        # headless=True for CI environments
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
 
         url = "https://trends.google.com/trends/trendingsearches/daily?geo=KR"
         page.goto(url)
 
-        # give the page a moment to load
+        # Wait for content to load, then scroll
         page.wait_for_timeout(5000)
         page.mouse.wheel(0, 5000)
         page.wait_for_timeout(5000)
 
         trends_data = []
         titles = page.locator('a.trending-search')
-        total_trends = titles.count()
-        print(f"📝 Found {total_trends} trending topics")
+        total = titles.count()
+        print(f"📝 Found {total} trending topics")
 
-        for i in range(total_trends):
+        for i in range(total):
             try:
                 title = titles.nth(i).inner_text().strip()
                 link = titles.nth(i).get_attribute('href') or ''
                 trends_data.append([title, link.strip()])
             except Exception as e:
-                print(f"⚠️ Error processing a trend: {e}")
-                continue
+                print(f"⚠️ Error on item {i}: {e}")
 
         browser.close()
 
     df = pd.DataFrame(trends_data, columns=["Trending Topic", "Link to Trend"])
     return df
 
-
 # STEP 2: Upload to Google Sheets
-def upload_to_google_sheets(df):
-    # the workflow writes your secret JSON into service_account.json
+def upload_to_google_sheets(df: pd.DataFrame):
+    # The workflow writes your secret into service_account.json
     keyfile = os.getenv("GOOGLE_SA_KEYFILE", "service_account.json")
+
     scope = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
@@ -52,17 +53,19 @@ def upload_to_google_sheets(df):
 
     sheet = client.open("Trends").sheet1
     sheet.clear()
-    sheet.update([df.columns.values.tolist()] + df.values.tolist())
+    sheet.update([df.columns.tolist()] + df.values.tolist())
 
-
-# STEP 3: Main Runner
-if __name__ == "__main__":
+# STEP 3: Main runner
+def main():
     print("🚀 Starting Korean Trending Now Scraper...")
+    df = scrape_all_trends()
 
-    df_trends = scrape_all_trends()
-    if not df_trends.empty:
-        print(f"✅ Scraping successful! Found {len(df_trends)} trends.")
-        upload_to_google_sheets(df_trends)
-        print("✅ Successfully uploaded to Google Sheets!")
+    if df.empty:
+        print("⚠️ No trends found or page structure changed.")
     else:
-        print("⚠️ No trends found today or page structure changed.")
+        print(f"✅ Scraped {len(df)} trends.")
+        upload_to_google_sheets(df)
+        print("✅ Uploaded to Google Sheets!")
+
+if __name__ == "__main__":
+    main()
