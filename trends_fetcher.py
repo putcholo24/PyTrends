@@ -74,7 +74,7 @@ def upload_to_google_sheets(df: pd.DataFrame):
     creds = ServiceAccountCredentials.from_json_keyfile_name(keyfile, scope)
     client = gspread.authorize(creds)
 
-    sheet = client.open("Trends").sheet1  # Ensure a sheet called "Trends" exists
+    sheet = client.open("Trends").sheet2  # Ensure a sheet called "Trends" exists
     sheet.clear()
     sheet.update([df.columns.tolist()] + df.values.tolist())
 
